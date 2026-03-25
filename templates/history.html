@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Model History{% endblock %}
+{% block content %}
+
+<h2 style="font-weight:700; letter-spacing:-0.5px;" class="mb-1">Model History</h2>
+<p class="text-muted-custom mb-4">All trained models saved to AWS S3.</p>
+
+{% if models %}
+<div class="table-responsive">
+  <table class="table" style="color:var(--text-primary); border-color:var(--border-color);">
+    <thead>
+      <tr style="color:var(--text-muted); font-size:0.8rem; text-transform:uppercase; letter-spacing:1px; border-color:var(--border-color);">
+        <th>Symbol</th>
+        <th>Trained At</th>
+        <th>S3 Model Key</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in models %}
+      <tr style="border-color:var(--border-color);">
+        <td class="mono" style="color:var(--accent-blue);">{{ m.symbol }}</td>
+        <td class="mono" style="color:var(--text-muted); font-size:0.85rem;">{{ m.trained_at }}</td>
+        <td class="mono" style="color:var(--text-muted); font-size:0.78rem;">{{ m.model_path | replace(m.model_path[:m.model_path.index('local_models')], '') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card-dark p-5 text-center">
+  <i class="bi bi-cloud-slash" style="font-size:3rem; color:var(--text-muted);"></i>
+  <p class="text-muted-custom mt-3">No models saved yet. Run a prediction first.</p>
+  <a href="/" class="btn-primary-custom btn mt-2">Go to Dashboard</a>
+</div>
+{% endif %}
+{% endblock %}

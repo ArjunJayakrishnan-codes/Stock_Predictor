@@ -1,0 +1,7 @@
+flask==3.0.3
+yfinance==0.2.40
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.0
+joblib==1.4.2
+# tensorflow         # optional — uncomment for LSTM; RandomForest used otherwise

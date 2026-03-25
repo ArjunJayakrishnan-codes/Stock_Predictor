@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}{{ symbol }} — Prediction Result{% endblock %}
+
+{% block extra_css %}
+<style>
+  .signal-hero {
+    border-radius: 20px;
+    padding: 40px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .signal-hero.buy  {
+    background: linear-gradient(135deg, rgba(0,230,118,0.08), rgba(0,230,118,0.02));
+    border: 1px solid rgba(0,230,118,0.25);
+  }
+  .signal-hero.sell {
+    background: linear-gradient(135deg, rgba(255,23,68,0.08), rgba(255,23,68,0.02));
+    border: 1px solid rgba(255,23,68,0.25);
+  }
+  .signal-hero.hold {
+    background: linear-gradient(135deg, rgba(255,171,0,0.08), rgba(255,171,0,0.02));
+    border: 1px solid rgba(255,171,0,0.25);
+  }
+
+  .signal-word {
+    font-size: clamp(3.5rem, 10vw, 6rem);
+    font-weight: 700;
+    letter-spacing: -2px;
+    line-height: 1;
+  }
+  .buy  .signal-word { color: var(--accent-green); }
+  .sell .signal-word { color: var(--accent-red);   }
+  .hold .signal-word { color: var(--accent-amber);  }
+
+  /* Confidence ring */
+  .confidence-ring-wrap { position: relative; width: 100px; height: 100px; margin: 0 auto; }
+  .confidence-ring-wrap canvas { position: absolute; top:0; left:0; }
+  .confidence-center {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-weight: 700; font-size: 1.3rem;
+  }
+
+  /* Metrics row */
+  .metric-card {
+    background: var(--bg-card2);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px 20px;
+    text-align: center;
+  }
+  .metric-card .metric-val {
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+  .metric-card .metric-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Chart */
+  #priceChart { max-height: 300px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Back button -->
+<a href="/" class="d-inline-flex align-items-center gap-2 text-muted-custom mb-4"
+   style="text-decoration:none; font-size:0.9rem;">
+  <i class="bi bi-arrow-left"></i> Back to Dashboard
+</a>
+
+<div class="row g-4">
+
+  <!-- LEFT: Signal + Metrics -->
+  <div class="col-12 col-lg-5">
+
+    <!-- Stock header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+      <div>
+        <h2 class="mono mb-0" style="font-size:2rem; font-weight:700; letter-spacing:-1px;">{{ symbol }}</h2>
+        <p class="text-muted-custom mb-0" style="font-size:0.9rem;">{{ stock.name }} &bull; {{ stock.sector }}</p>
+      </div>
+    </div>
+
+    <!-- Signal hero -->
+    <div class="signal-hero {{ signal | lower }} mb-4">
+      <p class="text-muted-custom mb-1" style="font-size:0.8rem; letter-spacing:2px;">AI SIGNAL</p>
+      <div class="signal-word">{{ signal }}</div>
+
+      <div class="d-flex align-items-center justify-content-center gap-3 mt-4">
+        <!-- Confidence ring -->
+        <div>
+          <div class="confidence-ring-wrap">
+            <canvas id="confRing" width="100" height="100"></canvas>
+            <div class="confidence-center mono">{{ confidence }}%</div>
+          </div>
+          <p class="text-muted-custom mt-1 mb-0" style="font-size:0.75rem; text-align:center;">Confidence</p>
+        </div>
+      </div>
+
+      <p class="text-muted-custom mt-3 mb-0" style="font-size:0.78rem;">
+        <i class="bi bi-clock me-1"></i>{{ timestamp }}
+      </p>
+    </div>
+
+    <!-- Metrics row -->
+    <div class="row g-2 mb-4">
+      <div class="col-6">
+        <div class="metric-card">
+          <div class="metric-val text-blue">{{ metrics.accuracy }}%</div>
+          <div class="metric-label">Model Accuracy</div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="metric-card">
+          <div class="metric-val" style="color:var(--text-primary);">{{ metrics.data_points }}</div>
+          <div class="metric-label">Data Points</div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="metric-card">
+          <div class="metric-val" style="color:var(--text-primary);">{{ metrics.training_samples }}</div>
+          <div class="metric-label">Training Samples</div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="metric-card">
+          <div class="metric-val" style="color:var(--accent-amber);">{{ metrics.model_type }}</div>
+          <div class="metric-label">Model Type</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Local storage badge -->
+    <div class="card-dark2 p-3">
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi bi-hdd-fill text-blue"></i>
+        <span style="font-weight:600; font-size:0.9rem;">Local Storage</span>
+      </div>
+      <ul class="list-unstyled mb-0" style="font-size:0.82rem; color:var(--text-muted); line-height:2;">
+        <li><i class="bi bi-check2 text-green me-2"></i>Model saved to <span class="mono">./local_models/{{ symbol }}/</span></li>
+        <li><i class="bi bi-check2 text-green me-2"></i>Trained on 10 months OHLCV data</li>
+        <li><i class="bi bi-info-circle me-2"></i>Switch to AWS S3 for production</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- RIGHT: Chart -->
+  <div class="col-12 col-lg-7">
+    <div class="card-dark p-4 h-100">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 style="font-weight:600; margin:0;">Price History</h6>
+        <div class="d-flex gap-3" style="font-size:0.78rem; color:var(--text-muted);">
+          <span><span style="color:#2979ff;">■</span> Price</span>
+          <span><span style="color:#00e676;">■</span> MA7</span>
+          <span><span style="color:#ff6d00;">■</span> MA21</span>
+        </div>
+      </div>
+      <canvas id="priceChart"></canvas>
+
+      <!-- Signal explanation -->
+      <div class="mt-4 p-3 card-dark2 rounded-3">
+        <h6 style="font-size:0.85rem; font-weight:600; margin-bottom:8px;">
+          <i class="bi bi-info-circle me-2 text-blue"></i>Signal Explanation
+        </h6>
+        <p style="font-size:0.82rem; color:var(--text-muted); line-height:1.7; margin:0;">
+          {% if signal == "BUY" %}
+          The model predicts the price is <strong style="color:var(--accent-green)">likely to rise</strong>
+          based on recent momentum, RSI levels, and MACD crossover signals derived from 10 months of training data.
+          {% elif signal == "SELL" %}
+          The model predicts the price is <strong style="color:var(--accent-red)">likely to fall</strong>.
+          Recent technical indicators suggest bearish momentum in the near term.
+          {% else %}
+          The model is <strong style="color:var(--accent-amber)">uncertain</strong> about the direction.
+          Holding the current position may be prudent until a clearer signal emerges.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Analyze another -->
+<div class="text-center mt-5">
+  <a href="/" class="btn-primary-custom btn">
+    <i class="bi bi-arrow-repeat me-2"></i>Analyze Another Stock
+  </a>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const chartRaw = {{ chart_data | safe }};
+
+// ── Price Chart ──
+const ctx = document.getElementById("priceChart").getContext("2d");
+
+const ma7Padded  = Array(chartRaw.ma7_offset).fill(null).concat(chartRaw.ma7);
+const ma21Padded = Array(chartRaw.ma21_offset).fill(null).concat(chartRaw.ma21);
+
+new Chart(ctx, {
+  type: "line",
+  data: {
+    labels: chartRaw.dates,
+    datasets: [
+      {
+        label: "Close Price",
+        data: chartRaw.closes,
+        borderColor: "#2979ff",
+        backgroundColor: "rgba(41,121,255,0.06)",
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.3,
+      },
+      {
+        label: "MA7",
+        data: ma7Padded,
+        borderColor: "#00e676",
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.3,
+        borderDash: [4, 4],
+      },
+      {
+        label: "MA21",
+        data: ma21Padded,
+        borderColor: "#ff6d00",
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.3,
+        borderDash: [6, 3],
+      },
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: {
+        ticks: { color: "#607d8b", maxTicksLimit: 8, font: { size: 11 } },
+        grid: { color: "#1e2a3a" },
+      },
+      y: {
+        ticks: { color: "#607d8b", font: { size: 11 } },
+        grid: { color: "#1e2a3a" },
+      }
+    }
+  }
+});
+
+// ── Confidence ring ──
+const conf = {{ confidence }};
+const signalColor = "{{ signal }}" === "BUY" ? "#00e676" : "{{ signal }}" === "SELL" ? "#ff1744" : "#ffab00";
+const ringCtx = document.getElementById("confRing").getContext("2d");
+new Chart(ringCtx, {
+  type: "doughnut",
+  data: {
+    datasets: [{
+      data: [conf, 100 - conf],
+      backgroundColor: [signalColor, "#1e2a3a"],
+      borderWidth: 0,
+    }]
+  },
+  options: {
+    cutout: "72%",
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    events: [],
+  }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}StockSense AI — Pick a Stock{% endblock %}
+
+{% block extra_css %}
+<style>
+  .hero-title {
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 700;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+  }
+  .hero-title span {
+    background: linear-gradient(135deg, #2979ff, #00e676);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .stock-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .stock-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .stock-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(41,121,255,0.04), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .stock-card:hover {
+    border-color: var(--accent-blue);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(41,121,255,0.12);
+  }
+  .stock-card:hover::before { opacity: 1; }
+  .stock-card.selected {
+    border-color: var(--accent-green);
+    background: rgba(0,230,118,0.05);
+  }
+  .stock-card .ticker {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: var(--accent-blue);
+  }
+  .stock-card .company {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .stock-card .sector-badge {
+    font-size: 0.7rem;
+    background: rgba(41,121,255,0.1);
+    color: var(--accent-blue);
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-top: 8px;
+    display: inline-block;
+  }
+  .stock-card .check-icon {
+    position: absolute;
+    top: 10px; right: 10px;
+    color: var(--accent-green);
+    font-size: 1rem;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .stock-card.selected .check-icon { opacity: 1; }
+
+  /* Custom input */
+  .custom-input-wrap {
+    position: relative;
+  }
+  .custom-input-wrap input {
+    background: var(--bg-card2);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    width: 100%;
+    transition: border-color 0.2s;
+  }
+  .custom-input-wrap input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(41,121,255,0.15);
+  }
+  .custom-input-wrap input::placeholder { color: var(--text-muted); }
+
+  .analyze-btn {
+    background: linear-gradient(135deg, #2979ff, #1565c0);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    font-size: 1.05rem;
+    border-radius: 12px;
+    padding: 0.8rem 2.5rem;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .analyze-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(41,121,255,0.4);
+  }
+  .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .info-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-card2);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+  }
+  .info-pill i { color: var(--accent-blue); }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<div class="row mb-5">
+  <div class="col-12 col-lg-7">
+    <p class="text-muted-custom mono mb-2" style="font-size:0.85rem; letter-spacing:2px;">AI-POWERED PREDICTIONS</p>
+    <h1 class="hero-title mb-3">
+      Smart signals for<br><span>smarter trades</span>
+    </h1>
+    <p class="text-muted-custom" style="font-size:1.05rem; max-width:500px; line-height:1.7;">
+      Select a stock below. Our model trains on 10 months of historical data
+      and gives you a <strong style="color:var(--text-primary)">BUY / SELL / HOLD</strong> signal in seconds.
+    </p>
+
+    <div class="d-flex flex-wrap gap-2 mt-4">
+      <span class="info-pill"><i class="bi bi-database"></i>10 months training data</span>
+      <span class="info-pill"><i class="bi bi-cpu"></i>LSTM + RandomForest</span>
+      <span class="info-pill"><i class="bi bi-cloud-arrow-up"></i>AWS S3 model storage</span>
+    </div>
+  </div>
+</div>
+
+<!-- Main Form -->
+<form action="/analyze" method="POST" data-loading>
+  <input type="hidden" name="symbol" id="selected-symbol"/>
+
+  <!-- Quick-pick grid -->
+  <div class="mb-4">
+    <h6 class="text-muted-custom mb-3" style="font-size:0.82rem; letter-spacing:1.5px; text-transform:uppercase;">
+      Popular Stocks
+    </h6>
+    <div class="stock-grid">
+      {% for stock in stocks %}
+      <div class="stock-card" onclick="selectStock('{{ stock.symbol }}', this)">
+        <i class="bi bi-check-circle-fill check-icon"></i>
+        <div class="ticker">{{ stock.symbol }}</div>
+        <div class="company">{{ stock.name }}</div>
+        <span class="sector-badge">{{ stock.sector }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="row align-items-center g-3 mt-2">
+    <!-- Custom ticker input -->
+    <div class="col-12 col-md-5">
+      <label class="text-muted-custom mb-1" style="font-size:0.8rem; letter-spacing:1px; text-transform:uppercase;">
+        Or Enter Custom Ticker
+      </label>
+      <div class="custom-input-wrap">
+        <input
+          type="text"
+          id="custom-ticker"
+          placeholder="e.g. WIPRO.NS, BTC-USD"
+          oninput="setCustomTicker(this.value)"
+        />
+      </div>
+    </div>
+
+    <!-- Selected indicator -->
+    <div class="col-12 col-md-4">
+      <div class="card-dark2 px-3 py-2 d-inline-flex align-items-center gap-2" id="selected-display" style="min-width:180px;">
+        <i class="bi bi-graph-up-arrow text-blue"></i>
+        <span class="mono" id="selected-label" style="font-size:0.95rem;">None selected</span>
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="col-12 col-md-3">
+      <button type="submit" class="analyze-btn w-100" id="analyze-btn" disabled>
+        <i class="bi bi-lightning-charge-fill me-2"></i>Analyze Stock
+      </button>
+    </div>
+  </div>
+</form>
+
+<!-- How it works -->
+<div class="row g-3 mt-5">
+  <div class="col-12 mb-2">
+    <h6 class="text-muted-custom" style="font-size:0.82rem; letter-spacing:1.5px; text-transform:uppercase;">
+      How it works
+    </h6>
+  </div>
+  {% set steps = [
+    ("1", "bi-database-down", "Data Fetch", "Pulls 10 months of OHLCV data from Yahoo Finance for the selected ticker."),
+    ("2", "bi-sliders", "Feature Engineering", "Computes RSI, MACD, Bollinger Bands, and moving averages as model inputs."),
+    ("3", "bi-cpu-fill", "Model Training", "Trains an LSTM (or RandomForest fallback) model on 80% of the data."),
+    ("4", "bi-cloud-upload-fill", "S3 Storage", "Saves the trained model to AWS S3 for reuse and audit trails."),
+    ("5", "bi-lightning-fill", "Prediction", "Runs inference on the most recent data window → BUY / SELL / HOLD."),
+  ] %}
+  {% for num, icon, title, desc in steps %}
+  <div class="col-12 col-sm-6 col-xl">
+    <div class="card-dark p-3 h-100">
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="mono text-muted-custom" style="font-size:0.75rem;">{{ num }}</span>
+        <i class="bi {{ icon }} text-blue"></i>
+        <span style="font-weight:600; font-size:0.9rem;">{{ title }}</span>
+      </div>
+      <p class="text-muted-custom" style="font-size:0.8rem; line-height:1.6; margin:0;">{{ desc }}</p>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  let currentSymbol = "";
+
+  function selectStock(symbol, card) {
+    // Deselect all
+    document.querySelectorAll(".stock-card").forEach(c => c.classList.remove("selected"));
+    // Select clicked
+    card.classList.add("selected");
+    currentSymbol = symbol;
+    document.getElementById("selected-symbol").value = symbol;
+    document.getElementById("custom-ticker").value = "";
+    updateUI(symbol);
+  }
+
+  function setCustomTicker(val) {
+    const sym = val.toUpperCase().trim();
+    document.querySelectorAll(".stock-card").forEach(c => c.classList.remove("selected"));
+    currentSymbol = sym;
+    document.getElementById("selected-symbol").value = sym;
+    updateUI(sym);
+  }
+
+  function updateUI(symbol) {
+    const label = document.getElementById("selected-label");
+    const btn   = document.getElementById("analyze-btn");
+    if (symbol) {
+      label.textContent = symbol;
+      label.style.color = "var(--accent-green)";
+      btn.disabled = false;
+    } else {
+      label.textContent = "None selected";
+      label.style.color = "";
+      btn.disabled = true;
+    }
+  }
+</script>
+{% endblock %}
