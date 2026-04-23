@@ -89,9 +89,13 @@ def engineer_features(df):
     df["ATR"] = tr.rolling(14).mean()
 
     # Volume indicators
-    df["Vol_Change"] = volume.pct_change()
-    df["Vol_MA"] = volume.rolling(20).mean()
-    df["Vol_Ratio"] = volume / (df["Vol_MA"] + 1e-9)
+    vol_change = volume.pct_change()
+    vol_ma = volume.rolling(20).mean()
+    vol_ratio = volume / (vol_ma + 1e-9)
+    
+    df["Vol_Change"] = vol_change
+    df["Vol_Ratio"] = vol_ratio
+    
     df["Vol_Change"] = df["Vol_Change"].replace([np.inf, -np.inf], np.nan)
     df["Vol_Ratio"] = df["Vol_Ratio"].replace([np.inf, -np.inf], np.nan)
     df["Vol_Change"] = df["Vol_Change"].fillna(0)
@@ -105,7 +109,7 @@ def engineer_features(df):
     df["Target"] = (close.shift(-1) > close).astype(int)
 
     # Forward fill and then backward fill for any remaining NaNs
-    df = df.fillna(method='ffill').fillna(method='bfill')
+    df = df.ffill().bfill()
     
     # Remove any rows still with NaN or infinity
     df.dropna(inplace=True)
