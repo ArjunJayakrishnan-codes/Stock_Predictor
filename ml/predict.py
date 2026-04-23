@@ -43,6 +43,12 @@ def predict_signal(symbol: str, model, scaler):
             )
         sequence = X_scaled[-LOOKBACK:].reshape(1, LOOKBACK, len(feature_cols))
         prob = float(model.predict(sequence, verbose=0)[0][0])
+        
+        # For LSTM, treat 0.5 as neutral threshold
+        pred_class = 1 if prob >= 0.5 else 0
+        confidence_margin = abs(prob - 0.5) * 2
+        
+        print(f"[predict-LSTM] {symbol}: prob={prob:.4f}, pred_class={pred_class}, margin={confidence_margin:.4f}")
     else:
         X_scaled = scaler.transform(X_raw)
         
@@ -51,21 +57,28 @@ def predict_signal(symbol: str, model, scaler):
             raise ValueError("Scaled data contains NaN or infinity values")
         
         latest = X_scaled[-1].reshape(1, -1)
-        prob = float(model.predict_proba(latest)[0][1])
+        proba = model.predict_proba(latest)[0]  # [prob_class_0, prob_class_1]
+        
+        # Use the max probability as confidence, but shift threshold based on prediction
+        pred_class = model.predict(latest)[0]  # Get the predicted class
+        prob = proba[1]  # Probability of class 1 (price up)
+        
+        # Use feature importance-weighted confidence
+        # If the model is confident in its prediction, show BUY/SELL, otherwise HOLD
+        confidence_margin = abs(prob - 0.5) * 2  # Ranges from 0 to 1
+        
+        print(f"[predict] {symbol}: prob={prob:.4f}, pred_class={pred_class}, margin={confidence_margin:.4f}")
 
-    # Signal thresholds - adjusted for better differentiation
-    if prob >= 0.65:
+    # Signal thresholds - based on predicted class + confidence
+    if pred_class == 1 and confidence_margin >= 0.30:
         signal = "BUY"
         confidence = prob
-    elif prob <= 0.35:
+    elif pred_class == 0 and confidence_margin >= 0.30:
         signal = "SELL"
         confidence = 1 - prob
     else:
         signal = "HOLD"
-        confidence = 1 - abs(prob - 0.5) * 2
-    
-    # Debug: log the probability
-    print(f"[predict] {symbol}: prob={prob:.4f}, signal={signal}, confidence={confidence:.2f}")
+        confidence = 1 - confidence_margin
 
     # Chart data: last 3 months of raw closes
     chart_df  = fetch_historical_data(symbol, months=3)
