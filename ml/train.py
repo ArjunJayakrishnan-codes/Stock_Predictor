@@ -308,7 +308,6 @@ def train_model(symbol: str, months: int = 10):
             model.fit(
                 X_train, y_train,
                 eval_set=[(X_val, y_val)],
-                early_stopping_rounds=50,
                 verbose=False
             )
             model_type = "XGBoost"
