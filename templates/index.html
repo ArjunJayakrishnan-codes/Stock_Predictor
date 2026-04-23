@@ -276,5 +276,31 @@
       btn.disabled = true;
     }
   }
+
+  // Handle form submission
+  document.querySelector("form").addEventListener("submit", (e) => {
+    const symbol = document.getElementById("selected-symbol").value.trim();
+    if (!symbol) {
+      e.preventDefault();
+      alert("Please select a stock ticker first");
+      return false;
+    }
+  });
+
+  // Allow Enter key in custom ticker input to submit form
+  document.getElementById("custom-ticker").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const btn = document.getElementById("analyze-btn");
+      if (!btn.disabled) {
+        btn.click();
+      }
+    }
+  });
+
+  // Initialize on page load
+  document.addEventListener("DOMContentLoaded", () => {
+    updateUI(currentSymbol);
+  });
 </script>
 {% endblock %}
