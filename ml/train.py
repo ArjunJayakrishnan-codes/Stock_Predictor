@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 from sklearn.preprocessing import MinMaxScaler
@@ -35,10 +36,18 @@ def engineer_features(df):
     """Add technical indicators as features."""
     df = df.copy()
     close = df["Close"]
+    high = df["High"]
+    low = df["Low"]
+    volume = df["Volume"]
 
-    # Moving averages
+    # Price momentum indicators
     df["MA7"] = close.rolling(7).mean()
     df["MA21"] = close.rolling(21).mean()
+    df["MA50"] = close.rolling(50).mean()
+    
+    # Price rate of change
+    df["ROC"] = close.pct_change(periods=10)
+    df["ROC"] = df["ROC"].replace([np.inf, -np.inf], np.nan)
 
     # RSI - with safeguards against infinity
     delta = close.diff()
@@ -47,29 +56,58 @@ def engineer_features(df):
     rs = gain / (loss + 1e-9)
     rs = rs.replace([np.inf, -np.inf], np.nan)
     df["RSI"] = 100 - (100 / (1 + rs))
-    df["RSI"] = df["RSI"].replace([np.inf, -np.inf], np.nan)
+    df["RSI"] = df["RSI"].replace([np.inf, -np.inf], np.nan).fillna(50)
 
     # MACD
     ema12 = close.ewm(span=12).mean()
     ema26 = close.ewm(span=26).mean()
     df["MACD"] = ema12 - ema26
+    df["MACD_Signal"] = df["MACD"].ewm(span=9).mean()
     df["MACD"] = df["MACD"].replace([np.inf, -np.inf], np.nan)
+    df["MACD_Signal"] = df["MACD_Signal"].replace([np.inf, -np.inf], np.nan)
 
     # Bollinger Band Width - with safeguards
     bb_mid = close.rolling(20).mean()
     bb_std = close.rolling(20).std()
     df["BB_Width"] = (bb_std * 2) / (bb_mid + 1e-9)
+    df["BB_Upper"] = bb_mid + (2 * bb_std)
+    df["BB_Lower"] = bb_mid - (2 * bb_std)
     df["BB_Width"] = df["BB_Width"].replace([np.inf, -np.inf], np.nan)
+    
+    # Stochastic Oscillator
+    lowest_low = low.rolling(14).min()
+    highest_high = high.rolling(14).max()
+    df["Stoch_K"] = (close - lowest_low) / (highest_high - lowest_low + 1e-9) * 100
+    df["Stoch_K"] = df["Stoch_K"].replace([np.inf, -np.inf], np.nan)
+    df["Stoch_D"] = df["Stoch_K"].rolling(3).mean()
+    
+    # ATR (Average True Range) for volatility
+    tr1 = high - low
+    tr2 = (high - close.shift()).abs()
+    tr3 = (low - close.shift()).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    df["ATR"] = tr.rolling(14).mean()
 
-    # Volume change - handle zero volume
-    df["Vol_Change"] = df["Volume"].pct_change()
+    # Volume indicators
+    df["Vol_Change"] = volume.pct_change()
+    df["Vol_MA"] = volume.rolling(20).mean()
+    df["Vol_Ratio"] = volume / (df["Vol_MA"] + 1e-9)
     df["Vol_Change"] = df["Vol_Change"].replace([np.inf, -np.inf], np.nan)
+    df["Vol_Ratio"] = df["Vol_Ratio"].replace([np.inf, -np.inf], np.nan)
     df["Vol_Change"] = df["Vol_Change"].fillna(0)
+    df["Vol_Ratio"] = df["Vol_Ratio"].fillna(1)
+
+    # Close price normalized to rolling window
+    df["Close_Norm"] = (close - close.rolling(20).mean()) / (close.rolling(20).std() + 1e-9)
+    df["Close_Norm"] = df["Close_Norm"].replace([np.inf, -np.inf], np.nan)
 
     # Target: 1 if price goes up next day, 0 if down
     df["Target"] = (close.shift(-1) > close).astype(int)
 
-    # Remove all rows with NaN or infinity values
+    # Forward fill and then backward fill for any remaining NaNs
+    df = df.fillna(method='ffill').fillna(method='bfill')
+    
+    # Remove any rows still with NaN or infinity
     df.dropna(inplace=True)
     df = df[~df.isin([np.inf, -np.inf]).any(axis=1)]
 
@@ -81,7 +119,10 @@ def engineer_features(df):
 
 def prepare_sequences(df, scaler=None):
     """Prepare LSTM sequences from feature DataFrame."""
-    feature_cols = ["Close", "MA7", "MA21", "RSI", "MACD", "BB_Width", "Vol_Change"]
+    feature_cols = [
+        "Close", "MA7", "MA21", "MA50", "ROC", "RSI", "MACD", "MACD_Signal", 
+        "BB_Width", "Stoch_K", "Stoch_D", "ATR", "Vol_Change", "Vol_Ratio", "Close_Norm"
+    ]
     X_raw = df[feature_cols].values
 
     # Remove any rows with infinity or NaN in raw data
@@ -96,7 +137,7 @@ def prepare_sequences(df, scaler=None):
         raise ValueError(f"Insufficient data points: {len(X_raw)} < {LOOKBACK}")
 
     if scaler is None:
-        scaler = MinMaxScaler()
+        scaler = MinMaxScaler(feature_range=(0, 1))
         X_scaled = scaler.fit_transform(X_raw)
     else:
         X_scaled = scaler.transform(X_raw)
@@ -115,14 +156,22 @@ def prepare_sequences(df, scaler=None):
 
 def build_lstm_model(input_shape):
     model = Sequential([
-        LSTM(64, return_sequences=True, input_shape=input_shape),
-        Dropout(0.2),
+        LSTM(128, return_sequences=True, input_shape=input_shape),
+        Dropout(0.3),
+        LSTM(64, return_sequences=True),
+        Dropout(0.3),
         LSTM(32, return_sequences=False),
+        Dropout(0.2),
+        Dense(32, activation="relu"),
         Dropout(0.2),
         Dense(16, activation="relu"),
         Dense(1, activation="sigmoid")
     ])
-    model.compile(optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
+    model.compile(
+        optimizer="adam", 
+        loss="binary_crossentropy", 
+        metrics=["accuracy", "AUC"]
+    )
     return model
 
 
@@ -152,8 +201,11 @@ def train_model(symbol: str, months: int = 10):
             "training_samples": len(X_train),
         }
     else:
-        # Fallback: RandomForest on flattened features
-        feature_cols = ["Close", "MA7", "MA21", "RSI", "MACD", "BB_Width", "Vol_Change"]
+        # Fallback: RandomForest on enhanced features
+        feature_cols = [
+            "Close", "MA7", "MA21", "MA50", "ROC", "RSI", "MACD", "MACD_Signal",
+            "BB_Width", "Stoch_K", "Stoch_D", "ATR", "Vol_Change", "Vol_Ratio", "Close_Norm"
+        ]
         X = df[feature_cols].values
         y = df["Target"].values
         scaler = MinMaxScaler()
@@ -163,7 +215,13 @@ def train_model(symbol: str, months: int = 10):
         X_train, X_test = X_scaled[:split], X_scaled[split:]
         y_train, y_test = y[:split], y[split:]
 
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model = RandomForestClassifier(
+            n_estimators=150, 
+            max_depth=15,
+            min_samples_split=5,
+            random_state=42,
+            n_jobs=-1
+        )
         model.fit(X_train, y_train)
 
         accuracy = model.score(X_test, y_test)

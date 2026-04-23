@@ -13,13 +13,16 @@ def predict_signal(symbol: str, model, scaler):
     Given a trained model + scaler, predict Buy/Sell/Hold for the stock.
     Returns: (signal: str, confidence: float, chart_data: dict)
     """
-    # engineer_features drops ~21 rows for NaN warm-up (MA21, RSI, etc.)
+    # engineer_features drops ~50 rows for NaN warm-up
     # We need at least LOOKBACK (60) clean rows after that drop.
     # Fetching 6 months (~180 trading days) gives a safe margin on any ticker.
     df = fetch_historical_data(symbol, months=6)
     df = engineer_features(df)
 
-    feature_cols = ["Close", "MA7", "MA21", "RSI", "MACD", "BB_Width", "Vol_Change"]
+    feature_cols = [
+        "Close", "MA7", "MA21", "MA50", "ROC", "RSI", "MACD", "MACD_Signal",
+        "BB_Width", "Stoch_K", "Stoch_D", "ATR", "Vol_Change", "Vol_Ratio", "Close_Norm"
+    ]
     X_raw = df[feature_cols].values
 
     # Validate no infinity or NaN in data
@@ -50,10 +53,10 @@ def predict_signal(symbol: str, model, scaler):
         latest = X_scaled[-1].reshape(1, -1)
         prob = float(model.predict_proba(latest)[0][1])
 
-    # Signal thresholds
-    if prob >= 0.65:
+    # Signal thresholds - slightly more conservative for better reliability
+    if prob >= 0.62:
         signal = "BUY"
-    elif prob <= 0.35:
+    elif prob <= 0.38:
         signal = "SELL"
         prob = 1 - prob
     else:
