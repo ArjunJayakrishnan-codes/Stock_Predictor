@@ -159,47 +159,108 @@ def prepare_sequences(df, scaler=None):
 
 
 def build_lstm_model(input_shape):
+    """Build improved LSTM model with better architecture for stock prediction."""
     model = Sequential([
-        LSTM(128, return_sequences=True, input_shape=input_shape),
+        # First LSTM block
+        LSTM(256, return_sequences=True, input_shape=input_shape, activation='relu'),
+        Dropout(0.4),
+        
+        # Second LSTM block
+        LSTM(128, return_sequences=True, activation='relu'),
+        Dropout(0.4),
+        
+        # Third LSTM block
+        LSTM(64, return_sequences=False, activation='relu'),
         Dropout(0.3),
-        LSTM(64, return_sequences=True),
-        Dropout(0.3),
-        LSTM(32, return_sequences=False),
+        
+        # Dense layers with regularization
+        Dense(64, activation='relu'),
         Dropout(0.2),
-        Dense(32, activation="relu"),
+        Dense(32, activation='relu'),
         Dropout(0.2),
-        Dense(16, activation="relu"),
-        Dense(1, activation="sigmoid")
+        Dense(16, activation='relu'),
+        Dense(1, activation='sigmoid')
     ])
+    
+    from tensorflow.keras.optimizers import Adam
+    optimizer = Adam(learning_rate=0.001)
     model.compile(
-        optimizer="adam", 
-        loss="binary_crossentropy", 
-        metrics=["accuracy", "AUC"]
+        optimizer=optimizer,
+        loss='binary_crossentropy',
+        metrics=['accuracy', 'AUC', 'Precision', 'Recall']
     )
     return model
 
 
 def train_model(symbol: str, months: int = 10):
-    """Full training pipeline. Returns (model, scaler, metrics)."""
+    """Full training pipeline with improved accuracy. Returns (model, scaler, metrics)."""
     print(f"[train] Fetching {months} months of data for {symbol}...")
     df = fetch_historical_data(symbol, months)
     df = engineer_features(df)
 
     if USE_LSTM:
         X, y, scaler = prepare_sequences(df)
-        split = int(len(X) * 0.8)
-        X_train, X_test = X[:split], X[split:]
-        y_train, y_test = y[:split], y[split:]
+        
+        # Better train/val/test split
+        total_len = len(X)
+        train_idx = int(total_len * 0.70)
+        val_idx = int(total_len * 0.85)
+        
+        X_train, y_train = X[:train_idx], y[:train_idx]
+        X_val, y_val = X[train_idx:val_idx], y[train_idx:val_idx]
+        X_test, y_test = X[val_idx:], y[val_idx:]
+
+        # Calculate class weights to handle imbalance
+        from sklearn.utils.class_weight import compute_class_weight
+        class_weights = compute_class_weight(
+            'balanced',
+            classes=np.unique(y_train),
+            y=y_train
+        )
+        class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
 
         model = build_lstm_model((X_train.shape[1], X_train.shape[2]))
-        model.fit(X_train, y_train, epochs=50, batch_size=32,
-                  validation_split=0.1, verbose=0)
+        
+        # Early stopping callback
+        from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+        early_stop = EarlyStopping(
+            monitor='val_loss',
+            patience=20,
+            restore_best_weights=True
+        )
+        reduce_lr = ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,
+            patience=10,
+            min_lr=0.00001
+        )
 
+        # Train with better parameters
+        model.fit(
+            X_train, y_train,
+            epochs=200,
+            batch_size=16,
+            validation_data=(X_val, y_val),
+            class_weight=class_weight_dict,
+            callbacks=[early_stop, reduce_lr],
+            verbose=0
+        )
+
+        # Evaluate on test set
         preds = (model.predict(X_test, verbose=0).flatten() > 0.5).astype(int)
         accuracy = float(np.mean(preds == y_test))
 
+        # Calculate additional metrics
+        from sklearn.metrics import precision_score, recall_score, f1_score
+        precision = precision_score(y_test, preds, zero_division=0)
+        recall = recall_score(y_test, preds, zero_division=0)
+        f1 = f1_score(y_test, preds, zero_division=0)
+
         metrics = {
             "accuracy": round(accuracy * 100, 2),
+            "precision": round(precision * 100, 2),
+            "recall": round(recall * 100, 2),
+            "f1_score": round(f1 * 100, 2),
             "model_type": "LSTM",
             "data_points": len(df),
             "training_samples": len(X_train),
@@ -220,17 +281,31 @@ def train_model(symbol: str, months: int = 10):
         y_train, y_test = y[:split], y[split:]
 
         model = RandomForestClassifier(
-            n_estimators=150, 
-            max_depth=15,
-            min_samples_split=5,
+            n_estimators=300, 
+            max_depth=20,
+            min_samples_split=3,
+            min_samples_leaf=1,
+            max_features='sqrt',
+            class_weight='balanced',
             random_state=42,
             n_jobs=-1
         )
         model.fit(X_train, y_train)
 
+        # Get predictions for metrics
+        preds = model.predict(X_test)
         accuracy = model.score(X_test, y_test)
+        
+        from sklearn.metrics import precision_score, recall_score, f1_score
+        precision = precision_score(y_test, preds, zero_division=0)
+        recall = recall_score(y_test, preds, zero_division=0)
+        f1 = f1_score(y_test, preds, zero_division=0)
+        
         metrics = {
             "accuracy": round(accuracy * 100, 2),
+            "precision": round(precision * 100, 2),
+            "recall": round(recall * 100, 2),
+            "f1_score": round(f1 * 100, 2),
             "model_type": "RandomForest",
             "data_points": len(df),
             "training_samples": len(X_train),

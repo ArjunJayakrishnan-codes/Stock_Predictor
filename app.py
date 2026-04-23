@@ -19,7 +19,7 @@ POPULAR_STOCKS = [
     {"symbol": "NFLX", "name": "Netflix Inc.", "sector": "Entertainment"},
     {"symbol": "AMD", "name": "Advanced Micro Devices", "sector": "Semiconductors"},
     {"symbol": "RELIANCE.NS", "name": "Reliance Industries", "sector": "Conglomerate"},
-    {"symbol": "TCS", "name": "Tata Consultancy Services", "sector": "Technology"},
+    {"symbol": "TCS.NS", "name": "Tata Consultancy Services", "sector": "Technology"},
     {"symbol": "INFY.NS", "name": "Infosys Ltd.", "sector": "Technology"},
     {"symbol": "HDFCBANK.NS", "name": "HDFC Bank", "sector": "Finance"},
 ]
