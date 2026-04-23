@@ -55,7 +55,11 @@ def predict_signal(symbol: str, model, scaler):
         # 0.5 → 0.84, 0.6 → 0.88, 0.7 → 0.91, 0.8 → 0.94 (naturally 80-95% range)
         confidence_margin = prob_margin ** 0.25
         
-        print(f"[predict-LSTM] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, confidence={confidence_margin:.4f}")
+        # Calculate how far the probability is from neutral (0.5)
+        # If close to 0.5, model is uncertain = HOLD
+        certainty_raw = abs(prob - 0.5)  # 0 (neutral) to 0.5 (certain)
+        
+        print(f"[predict-LSTM] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, confidence={confidence_margin:.4f}, certainty_raw={certainty_raw:.4f}")
     else:
         X_scaled = scaler.transform(X_raw)
         
@@ -79,20 +83,31 @@ def predict_signal(symbol: str, model, scaler):
         # 0.5 → 0.84, 0.6 → 0.88, 0.7 → 0.91, 0.8 → 0.94 (naturally 80-95% range)
         confidence_margin = max_prob ** 0.25
         
-        print(f"[predict] {symbol}: proba={proba}, max_prob={max_prob:.4f}, confidence={confidence_margin:.4f}")
+        # Calculate how far the probability is from neutral (0.5)
+        # If close to 0.5, model is uncertain = HOLD
+        certainty_raw = abs(prob - 0.5)  # 0 (neutral) to 0.5 (certain)
+        
+        print(f"[predict] {symbol}: proba={proba}, max_prob={max_prob:.4f}, confidence={confidence_margin:.4f}, certainty_raw={certainty_raw:.4f}")
 
 
-    # Signal thresholds - based on predicted class
-    # No hardcoding - confidence is purely dynamic based on model probabilities
-    if pred_class == 1:
-        signal = "BUY"
-        confidence = confidence_margin  # Dynamic based on actual probabilities
-    elif pred_class == 0:
-        signal = "SELL"
-        confidence = confidence_margin  # Dynamic based on actual probabilities
+    # Signal thresholds - based on predicted class AND model certainty
+    # If model is uncertain (prob close to 0.5), show HOLD
+    # Otherwise show BUY/SELL based on prediction
+    if USE_LSTM:
+        certainty_threshold = 0.15  # LSTM uses margin, so use 0.15 threshold
     else:
+        certainty_threshold = 0.15  # RandomForest uses abs(prob - 0.5), same threshold
+    
+    if certainty_raw < certainty_threshold:
+        # Model is uncertain - stay in the middle
         signal = "HOLD"
-        confidence = confidence_margin  # Dynamic based on actual probabilities
+        confidence = confidence_margin
+    elif pred_class == 1:
+        signal = "BUY"
+        confidence = confidence_margin
+    else:
+        signal = "SELL"
+        confidence = confidence_margin
 
     # Chart data: last 3 months of raw closes
     chart_df  = fetch_historical_data(symbol, months=3)
