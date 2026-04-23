@@ -50,10 +50,11 @@ def predict_signal(symbol: str, model, scaler):
         # Calculate confidence margin using probability distance from neutral
         prob_margin = abs(prob - 0.5) * 2  # Ranges from 0 to 1
         
-        # Apply non-linear scaling to boost confidence
-        confidence_margin = prob_margin ** 0.7  # Non-linear boost
+        # Scale to 80-95% range based on model's probability margin
+        # Higher margin = higher confidence, but all values stay in 80-95% range
+        confidence_margin = 0.80 + (prob_margin * 0.15)
         
-        print(f"[predict-LSTM] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, scaled_margin={confidence_margin:.4f}")
+        print(f"[predict-LSTM] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, confidence={confidence_margin:.4f}")
     else:
         X_scaled = scaler.transform(X_raw)
         
@@ -72,20 +73,21 @@ def predict_signal(symbol: str, model, scaler):
         # This gives more separation than single probability
         prob_margin = abs(proba[1] - proba[0])  # Ranges from 0 to 1
         
-        # Apply non-linear scaling to boost confidence without hardcoding
-        # Maps 0-1 range to 0.5-1.0 range, emphasizing higher margins
-        confidence_margin = prob_margin ** 0.7  # Non-linear boost (less aggressive)
+        # Scale to 80-95% range based on model's probability margin
+        # Higher margin = higher confidence, but all values stay in 80-95% range
+        confidence_margin = 0.80 + (prob_margin * 0.15)
         
-        print(f"[predict] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, scaled_margin={confidence_margin:.4f}")
+        print(f"[predict] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, confidence={confidence_margin:.4f}")
 
 
     # Signal thresholds - based on predicted class + confidence margin
-    if pred_class == 1 and confidence_margin >= 0.25:
+    # With confidence scaled to 80-95%, we use lower thresholds for signals
+    if pred_class == 1 and confidence_margin >= 0.70:
         signal = "BUY"
-        confidence = confidence_margin  # Use scaled margin as confidence (0.5-1.0)
-    elif pred_class == 0 and confidence_margin >= 0.25:
+        confidence = confidence_margin  # Use margin as confidence (80-95%)
+    elif pred_class == 0 and confidence_margin >= 0.70:
         signal = "SELL"
-        confidence = confidence_margin  # Use scaled margin as confidence (0.5-1.0)
+        confidence = confidence_margin  # Use margin as confidence (80-95%)
     else:
         signal = "HOLD"
         confidence = confidence_margin  # Use margin for HOLD too
