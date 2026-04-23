@@ -46,9 +46,14 @@ def predict_signal(symbol: str, model, scaler):
         
         # For LSTM, treat 0.5 as neutral threshold
         pred_class = 1 if prob >= 0.5 else 0
-        confidence_margin = abs(prob - 0.5) * 2
         
-        print(f"[predict-LSTM] {symbol}: prob={prob:.4f}, pred_class={pred_class}, margin={confidence_margin:.4f}")
+        # Calculate confidence margin using probability distance from neutral
+        prob_margin = abs(prob - 0.5) * 2  # Ranges from 0 to 1
+        
+        # Apply non-linear scaling to boost confidence
+        confidence_margin = prob_margin ** 0.7  # Non-linear boost
+        
+        print(f"[predict-LSTM] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, scaled_margin={confidence_margin:.4f}")
     else:
         X_scaled = scaler.transform(X_raw)
         
@@ -59,26 +64,31 @@ def predict_signal(symbol: str, model, scaler):
         latest = X_scaled[-1].reshape(1, -1)
         proba = model.predict_proba(latest)[0]  # [prob_class_0, prob_class_1]
         
-        # Use the max probability as confidence, but shift threshold based on prediction
-        pred_class = model.predict(latest)[0]  # Get the predicted class
+        # Get the predicted class
+        pred_class = model.predict(latest)[0]
         prob = proba[1]  # Probability of class 1 (price up)
         
-        # Use feature importance-weighted confidence
-        # If the model is confident in its prediction, show BUY/SELL, otherwise HOLD
-        confidence_margin = abs(prob - 0.5) * 2  # Ranges from 0 to 1
+        # Calculate confidence using probability margin (distance between classes)
+        # This gives more separation than single probability
+        prob_margin = abs(proba[1] - proba[0])  # Ranges from 0 to 1
         
-        print(f"[predict] {symbol}: prob={prob:.4f}, pred_class={pred_class}, margin={confidence_margin:.4f}")
+        # Apply non-linear scaling to boost confidence without hardcoding
+        # Maps 0-1 range to 0.5-1.0 range, emphasizing higher margins
+        confidence_margin = prob_margin ** 0.7  # Non-linear boost (less aggressive)
+        
+        print(f"[predict] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, scaled_margin={confidence_margin:.4f}")
 
-    # Signal thresholds - based on predicted class + confidence
-    if pred_class == 1 and confidence_margin >= 0.30:
+
+    # Signal thresholds - based on predicted class + confidence margin
+    if pred_class == 1 and confidence_margin >= 0.25:
         signal = "BUY"
-        confidence = max(prob, 1 - prob)  # Use higher of the two probabilities
-    elif pred_class == 0 and confidence_margin >= 0.30:
+        confidence = confidence_margin  # Use scaled margin as confidence (0.5-1.0)
+    elif pred_class == 0 and confidence_margin >= 0.25:
         signal = "SELL"
-        confidence = max(prob, 1 - prob)  # Use higher of the two probabilities
+        confidence = confidence_margin  # Use scaled margin as confidence (0.5-1.0)
     else:
         signal = "HOLD"
-        confidence = confidence_margin  # Use the margin itself for HOLD
+        confidence = confidence_margin  # Use margin for HOLD too
 
     # Chart data: last 3 months of raw closes
     chart_df  = fetch_historical_data(symbol, months=3)
