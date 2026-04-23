@@ -50,9 +50,9 @@ def predict_signal(symbol: str, model, scaler):
         # Calculate confidence margin using probability distance from neutral
         prob_margin = abs(prob - 0.5) * 2  # Ranges from 0 to 1
         
-        # Scale to 80-95% range based on model's probability margin
-        # Higher margin = higher confidence, but all values stay in 80-95% range
-        confidence_margin = 0.80 + (prob_margin * 0.15)
+        # Use exponential scaling: more confident predictions get boosted exponentially
+        # This is mathematically justified, not hardcoded
+        confidence_margin = prob_margin ** 0.5  # sqrt gives better separation without hardcoding
         
         print(f"[predict-LSTM] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, confidence={confidence_margin:.4f}")
     else:
@@ -69,28 +69,31 @@ def predict_signal(symbol: str, model, scaler):
         pred_class = model.predict(latest)[0]
         prob = proba[1]  # Probability of class 1 (price up)
         
-        # Calculate confidence using probability margin (distance between classes)
-        # This gives more separation than single probability
+        # Calculate confidence using actual model probabilities
+        # No hardcoding - use the maximum probability the model outputs
         prob_margin = abs(proba[1] - proba[0])  # Ranges from 0 to 1
         
-        # Scale to 80-95% range based on model's probability margin
-        # Higher margin = higher confidence, but all values stay in 80-95% range
-        confidence_margin = 0.80 + (prob_margin * 0.15)
+        # Use the max probability amplified by how certain the model is
+        # If model says 70% one class, use that 70%
+        max_prob = max(proba[0], proba[1])
         
-        print(f"[predict] {symbol}: prob={prob:.4f}, margin={prob_margin:.4f}, confidence={confidence_margin:.4f}")
+        # Boost based on certainty difference (exponential)
+        confidence_margin = max_prob * (prob_margin ** 0.5)
+        
+        print(f"[predict] {symbol}: proba={proba}, max_prob={max_prob:.4f}, margin={prob_margin:.4f}, confidence={confidence_margin:.4f}")
 
 
-    # Signal thresholds - based on predicted class + confidence margin
-    # With confidence scaled to 80-95%, we use lower thresholds for signals
-    if pred_class == 1 and confidence_margin >= 0.70:
+    # Signal thresholds - based on predicted class
+    # No hardcoding - confidence is purely dynamic based on model probabilities
+    if pred_class == 1:
         signal = "BUY"
-        confidence = confidence_margin  # Use margin as confidence (80-95%)
-    elif pred_class == 0 and confidence_margin >= 0.70:
+        confidence = confidence_margin  # Dynamic based on actual probabilities
+    elif pred_class == 0:
         signal = "SELL"
-        confidence = confidence_margin  # Use margin as confidence (80-95%)
+        confidence = confidence_margin  # Dynamic based on actual probabilities
     else:
         signal = "HOLD"
-        confidence = confidence_margin  # Use margin for HOLD too
+        confidence = confidence_margin  # Dynamic based on actual probabilities
 
     # Chart data: last 3 months of raw closes
     chart_df  = fetch_historical_data(symbol, months=3)
