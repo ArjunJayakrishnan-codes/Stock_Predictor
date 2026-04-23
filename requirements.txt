@@ -4,6 +4,5 @@ numpy
 pandas
 scikit-learn
 joblib
-xgboost
 tensorflow
 keras

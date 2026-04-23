@@ -7,19 +7,16 @@ from sklearn.metrics import mean_absolute_error
 import joblib
 import os
 
-# Try importing Keras/TensorFlow; fallback to XGBoost
+# Try importing Keras/TensorFlow
 try:
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.layers import LSTM, Dense, Dropout
     USE_LSTM = True
 except ImportError:
-    try:
-        import xgboost as xgb
-        USE_XGB = True
-    except ImportError:
-        from sklearn.ensemble import RandomForestClassifier
-        USE_XGB = False
     USE_LSTM = False
+
+# Always use RandomForest as fallback/ensemble partner
+from sklearn.ensemble import RandomForestClassifier
 
 from aws.s3_utils import upload_model, download_model
 
@@ -271,7 +268,7 @@ def train_model(symbol: str, months: int = 10):
             "training_samples": len(X_train),
         }
     else:
-        # Fallback: XGBoost (much better than RandomForest for time series)
+        # Fallback: RandomForest for time series prediction
         feature_cols = [
             "Close", "MA7", "MA21", "MA50", "ROC", "RSI", "MACD", "MACD_Signal",
             "BB_Width", "Stoch_K", "Stoch_D", "ATR", "Vol_Change", "Vol_Ratio", "Close_Norm"
@@ -290,42 +287,20 @@ def train_model(symbol: str, months: int = 10):
         X_val, y_val = X_scaled[train_idx:val_idx], y[train_idx:val_idx]
         X_test, y_test = X_scaled[val_idx:], y[val_idx:]
 
-        # Use XGBoost if available, otherwise RandomForest
-        if USE_XGB:
-            model = xgb.XGBClassifier(
-                n_estimators=500,
-                max_depth=7,
-                learning_rate=0.05,
-                subsample=0.8,
-                colsample_bytree=0.8,
-                scale_pos_weight=1,
-                objective='binary:logistic',
-                random_state=42,
-                n_jobs=-1,
-                verbosity=0,
-                tree_method='hist'
-            )
-            model.fit(
-                X_train, y_train,
-                eval_set=[(X_val, y_val)],
-                verbose=False
-            )
-            model_type = "XGBoost"
-        else:
-            model = RandomForestClassifier(
-                n_estimators=500, 
-                max_depth=15,
-                min_samples_split=2,
-                min_samples_leaf=1,
-                max_features='sqrt',
-                class_weight='balanced',
-                random_state=42,
-                n_jobs=-1,
-                bootstrap=True,
-                oob_score=True
-            )
-            model.fit(X_train, y_train)
-            model_type = "RandomForest"
+        # Use RandomForest with optimized parameters
+        model = RandomForestClassifier(
+            n_estimators=500, 
+            max_depth=15,
+            min_samples_split=2,
+            min_samples_leaf=1,
+            max_features='sqrt',
+            class_weight='balanced',
+            random_state=42,
+            n_jobs=-1,
+            bootstrap=True,
+            oob_score=True
+        )
+        model.fit(X_train, y_train)
 
         # Get predictions for metrics
         preds = model.predict(X_test)
@@ -341,7 +316,7 @@ def train_model(symbol: str, months: int = 10):
             "precision": round(precision * 100, 2),
             "recall": round(recall * 100, 2),
             "f1_score": round(f1 * 100, 2),
-            "model_type": model_type,
+            "model_type": "RandomForest",
             "data_points": len(df),
             "training_samples": len(X_train),
         }
