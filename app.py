@@ -55,8 +55,16 @@ def analyze():
             chart_data=json.dumps(chart_data),
             timestamp=datetime.now().strftime("%B %d, %Y at %I:%M %p")
         )
+    except ValueError as e:
+        error_msg = str(e)
+        if "infinity" in error_msg.lower() or "nan" in error_msg.lower():
+            error_msg = f"Could not analyze {symbol}: The data quality is poor or the stock has insufficient trading history. Try another ticker."
+        elif "insufficient" in error_msg.lower():
+            error_msg = f"Insufficient data for {symbol}. Please try a stock with more trading history."
+        return render_template("error.html", error=error_msg, symbol=symbol)
     except Exception as e:
-        return render_template("error.html", error=str(e), symbol=symbol)
+        error_msg = f"Could not analyze {symbol}: {str(e)}"
+        return render_template("error.html", error=error_msg, symbol=symbol)
 
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
@@ -74,8 +82,15 @@ def api_predict():
             "chart_data": chart_data,
             "status": "success"
         })
+    except ValueError as e:
+        error_msg = str(e)
+        if "infinity" in error_msg.lower() or "nan" in error_msg.lower():
+            error_msg = f"Data quality issue for {symbol}. The stock may have insufficient trading history."
+        elif "insufficient" in error_msg.lower():
+            error_msg = f"Insufficient data for {symbol}. Try a different stock."
+        return jsonify({"status": "error", "message": error_msg}), 400
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": f"Analysis failed for {symbol}: {str(e)}"}), 500
 
 @app.route("/history")
 def history():

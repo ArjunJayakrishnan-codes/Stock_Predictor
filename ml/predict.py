@@ -20,9 +20,19 @@ def predict_signal(symbol: str, model, scaler):
     df = engineer_features(df)
 
     feature_cols = ["Close", "MA7", "MA21", "RSI", "MACD", "BB_Width", "Vol_Change"]
+    X_raw = df[feature_cols].values
+
+    # Validate no infinity or NaN in data
+    if np.isinf(X_raw).any() or np.isnan(X_raw).any():
+        raise ValueError(f"Data contains NaN or infinity values. Data shape: {X_raw.shape}")
 
     if USE_LSTM and hasattr(model, 'predict') and hasattr(model, 'layers'):
-        X_scaled = scaler.transform(df[feature_cols].values)
+        X_scaled = scaler.transform(X_raw)
+        
+        # Final validation after scaling
+        if np.isinf(X_scaled).any() or np.isnan(X_scaled).any():
+            raise ValueError("Scaled data contains NaN or infinity values")
+        
         if len(X_scaled) < LOOKBACK:
             raise ValueError(
                 f"Only {len(X_scaled)} clean rows available after feature engineering; "
@@ -31,7 +41,12 @@ def predict_signal(symbol: str, model, scaler):
         sequence = X_scaled[-LOOKBACK:].reshape(1, LOOKBACK, len(feature_cols))
         prob = float(model.predict(sequence, verbose=0)[0][0])
     else:
-        X_scaled = scaler.transform(df[feature_cols].values)
+        X_scaled = scaler.transform(X_raw)
+        
+        # Final validation after scaling
+        if np.isinf(X_scaled).any() or np.isnan(X_scaled).any():
+            raise ValueError("Scaled data contains NaN or infinity values")
+        
         latest = X_scaled[-1].reshape(1, -1)
         prob = float(model.predict_proba(latest)[0][1])
 
