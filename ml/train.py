@@ -304,12 +304,17 @@ def train_model(symbol: str, months: int = 10):
 
         # Get predictions for metrics
         preds = model.predict(X_test)
+        proba = model.predict_proba(X_test)[:, 1]  # Get probability of class 1
         accuracy = np.mean(preds == y_test)
         
         from sklearn.metrics import precision_score, recall_score, f1_score
         precision = precision_score(y_test, preds, zero_division=0)
         recall = recall_score(y_test, preds, zero_division=0)
         f1 = f1_score(y_test, preds, zero_division=0)
+        
+        # Debug: Show probability distribution
+        print(f"[train] {symbol} RandomForest - Accuracy: {accuracy*100:.2f}%")
+        print(f"[train] {symbol} Probability distribution - Min: {proba.min():.4f}, Max: {proba.max():.4f}, Mean: {proba.mean():.4f}, Std: {proba.std():.4f}")
         
         metrics = {
             "accuracy": round(accuracy * 100, 2),
