@@ -53,16 +53,19 @@ def predict_signal(symbol: str, model, scaler):
         latest = X_scaled[-1].reshape(1, -1)
         prob = float(model.predict_proba(latest)[0][1])
 
-    # Signal thresholds - tuned for better accuracy
-    if prob >= 0.70:
+    # Signal thresholds - adjusted for better differentiation
+    if prob >= 0.65:
         signal = "BUY"
         confidence = prob
-    elif prob <= 0.30:
+    elif prob <= 0.35:
         signal = "SELL"
         confidence = 1 - prob
     else:
         signal = "HOLD"
         confidence = 1 - abs(prob - 0.5) * 2
+    
+    # Debug: log the probability
+    print(f"[predict] {symbol}: prob={prob:.4f}, signal={signal}, confidence={confidence:.2f}")
 
     # Chart data: last 3 months of raw closes
     chart_df  = fetch_historical_data(symbol, months=3)
