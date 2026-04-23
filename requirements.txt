@@ -4,4 +4,6 @@ numpy
 pandas
 scikit-learn
 joblib
-# tensorflow         # optional — uncomment for LSTM; RandomForest used otherwise
+xgboost
+tensorflow
+keras

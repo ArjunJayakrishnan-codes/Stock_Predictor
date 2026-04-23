@@ -7,13 +7,18 @@ from sklearn.metrics import mean_absolute_error
 import joblib
 import os
 
-# Try importing Keras/TensorFlow; fallback to sklearn RandomForest
+# Try importing Keras/TensorFlow; fallback to XGBoost
 try:
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.layers import LSTM, Dense, Dropout
     USE_LSTM = True
 except ImportError:
-    from sklearn.ensemble import RandomForestClassifier
+    try:
+        import xgboost as xgb
+        USE_XGB = True
+    except ImportError:
+        from sklearn.ensemble import RandomForestClassifier
+        USE_XGB = False
     USE_LSTM = False
 
 from aws.s3_utils import upload_model, download_model
@@ -266,7 +271,7 @@ def train_model(symbol: str, months: int = 10):
             "training_samples": len(X_train),
         }
     else:
-        # Fallback: RandomForest on enhanced features
+        # Fallback: XGBoost (much better than RandomForest for time series)
         feature_cols = [
             "Close", "MA7", "MA21", "MA50", "ROC", "RSI", "MACD", "MACD_Signal",
             "BB_Width", "Stoch_K", "Stoch_D", "ATR", "Vol_Change", "Vol_Ratio", "Close_Norm"
@@ -276,25 +281,56 @@ def train_model(symbol: str, months: int = 10):
         scaler = MinMaxScaler()
         X_scaled = scaler.fit_transform(X)
 
-        split = int(len(X_scaled) * 0.8)
-        X_train, X_test = X_scaled[:split], X_scaled[split:]
-        y_train, y_test = y[:split], y[split:]
+        # Better train/val/test split
+        total_len = len(X_scaled)
+        train_idx = int(total_len * 0.70)
+        val_idx = int(total_len * 0.85)
+        
+        X_train, y_train = X_scaled[:train_idx], y[:train_idx]
+        X_val, y_val = X_scaled[train_idx:val_idx], y[train_idx:val_idx]
+        X_test, y_test = X_scaled[val_idx:], y[val_idx:]
 
-        model = RandomForestClassifier(
-            n_estimators=300, 
-            max_depth=20,
-            min_samples_split=3,
-            min_samples_leaf=1,
-            max_features='sqrt',
-            class_weight='balanced',
-            random_state=42,
-            n_jobs=-1
-        )
-        model.fit(X_train, y_train)
+        # Use XGBoost if available, otherwise RandomForest
+        if USE_XGB:
+            model = xgb.XGBClassifier(
+                n_estimators=500,
+                max_depth=7,
+                learning_rate=0.05,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                scale_pos_weight=1,
+                objective='binary:logistic',
+                random_state=42,
+                n_jobs=-1,
+                verbosity=0,
+                tree_method='hist'
+            )
+            model.fit(
+                X_train, y_train,
+                eval_set=[(X_val, y_val)],
+                early_stopping_rounds=50,
+                verbose=False
+            )
+            model_type = "XGBoost"
+        else:
+            model = RandomForestClassifier(
+                n_estimators=500, 
+                max_depth=15,
+                min_samples_split=2,
+                min_samples_leaf=1,
+                max_features='sqrt',
+                class_weight='balanced',
+                random_state=42,
+                n_jobs=-1,
+                bootstrap=True,
+                oob_score=True
+            )
+            model.fit(X_train, y_train)
+            model_type = "RandomForest"
 
         # Get predictions for metrics
         preds = model.predict(X_test)
-        accuracy = model.score(X_test, y_test)
+        accuracy = np.mean(preds == y_test)
         
         from sklearn.metrics import precision_score, recall_score, f1_score
         precision = precision_score(y_test, preds, zero_division=0)
@@ -306,7 +342,7 @@ def train_model(symbol: str, months: int = 10):
             "precision": round(precision * 100, 2),
             "recall": round(recall * 100, 2),
             "f1_score": round(f1 * 100, 2),
-            "model_type": "RandomForest",
+            "model_type": model_type,
             "data_points": len(df),
             "training_samples": len(X_train),
         }
