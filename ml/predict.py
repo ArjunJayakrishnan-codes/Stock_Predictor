@@ -72,13 +72,13 @@ def predict_signal(symbol: str, model, scaler):
     # Signal thresholds - based on predicted class + confidence
     if pred_class == 1 and confidence_margin >= 0.30:
         signal = "BUY"
-        confidence = prob
+        confidence = max(prob, 1 - prob)  # Use higher of the two probabilities
     elif pred_class == 0 and confidence_margin >= 0.30:
         signal = "SELL"
-        confidence = 1 - prob
+        confidence = max(prob, 1 - prob)  # Use higher of the two probabilities
     else:
         signal = "HOLD"
-        confidence = 1 - confidence_margin
+        confidence = confidence_margin  # Use the margin itself for HOLD
 
     # Chart data: last 3 months of raw closes
     chart_df  = fetch_historical_data(symbol, months=3)

@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from ml.train import train_model
 from ml.predict import predict_signal
 from aws.s3_utils import list_saved_models
@@ -53,7 +53,7 @@ def analyze():
             confidence=round(confidence * 100, 2),
             metrics=metrics,
             chart_data=json.dumps(chart_data),
-            timestamp=datetime.now().strftime("%B %d, %Y at %I:%M %p")
+            timestamp=(datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%B %d, %Y at %I:%M %p")
         )
     except ValueError as e:
         error_msg = str(e)
